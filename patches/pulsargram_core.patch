@@ -1,0 +1,90 @@
+// =====================================================================
+// MirnGram Custom Fork Patch for Telegram Desktop (tdesktop)
+// Target repo: https://github.com/telegramdesktop/tdesktop
+// =====================================================================
+
+// [FILE 1: Telegram/SourceFiles/data/data_peer.h]
+// ---------------------------------------------------------------------
+--- a/Telegram/SourceFiles/data/data_peer.h
++++ b/Telegram/SourceFiles/data/data_peer.h
+@@ -210,6 +210,10 @@ public:
+ 	[[nodiscard]] bool isVerified() const;
+ 	[[nodiscard]] bool isScam() const;
+ 	[[nodiscard]] bool isFake() const;
++	// MirnGram Custom Verification
++	[[nodiscard]] bool isMirnVerified() const;
++	[[nodiscard]] QString customVerifiedTooltip() const;
+
+// [FILE 2: Telegram/SourceFiles/data/data_peer.cpp]
+// ---------------------------------------------------------------------
+--- a/Telegram/SourceFiles/data/data_peer.cpp
++++ b/Telegram/SourceFiles/data/data_peer.cpp
+@@ -345,6 +345,21 @@ bool PeerData::isVerified() const {
+ 	return (_flags & Flag::Verified);
+ }
+ 
++// Проверка ID канала или пользователя на кастомную галочку
++bool PeerData::isMirnVerified() const {
++	static const std::unordered_set<uint64> kVerifiedChannels = {
++		1001948271638ULL, // PulsarGram | Dev Channel
++	};
++	return kVerifiedChannels.contains(bareId().bare);
++}
++
++QString PeerData::customVerifiedTooltip() const {
++	if (isMirnVerified()) {
++		return u"✓ Верифицировано разработчиком MirnGram (PulsarGram | Dev Channel)"_q;
++	}
++	return tr::lng_profile_verified(tr::now);
++}
+
+// [FILE 3: Telegram/SourceFiles/data/data_session.cpp - Anti-Delete]
+// ---------------------------------------------------------------------
+// Предотвращает локальное удаление сообщений из кэша и помечает их как [Удалено]
+--- a/Telegram/SourceFiles/data/data_session.cpp
++++ b/Telegram/SourceFiles/data/data_session.cpp
+@@ -1420,7 +1420,13 @@ void SessionData::deleteMessages(
+ 	const std::vector<MsgId> &ids,
+ 	bool fromServer) {
+ 	for (const auto msgId : ids) {
+ 		if (const auto item = message(msgId)) {
++			// MirnGram Anti-Delete: не удаляем сообщение, а выставляем флаг
++			if (fromServer && !item->out()) {
++				item->markMirnDeleted(); // Помечает сообщение красным тегом [Удалено]
++				continue;
++			}
+ 			item->destroy();
+ 		}
+ 	}
+ }
+
+// [FILE 4: Telegram/SourceFiles/history/view/history_view_element.cpp - Bypass NoForwards]
+// ---------------------------------------------------------------------
+// Снимает запрет на копирование и сохранение медиа из закрытых каналов
+--- a/Telegram/SourceFiles/history/view/history_view_element.cpp
++++ b/Telegram/SourceFiles/history/view/history_view_element.cpp
+@@ -880,7 +880,8 @@ bool Element::hasCopyRestriction() const {
+ 	if (const auto peer = _data->history()->peer) {
+-		return peer->isNoForwards();
++		// MirnGram: всегда разрешаем сохранение и копирование
++		return false; 
+ 	}
+ 	return false;
+ }
+
+// [FILE 5: Telegram/SourceFiles/main/main_session.cpp - Ghost Mode]
+// ---------------------------------------------------------------------
+// Блокирует отправку отчетов о наборе текста и статусе онлайн
+--- a/Telegram/SourceFiles/main/main_session.cpp
++++ b/Telegram/SourceFiles/main/main_session.cpp
+@@ -512,6 +512,10 @@ void Session::sendTyping(PeerData *peer, TypingType type) {
++	// MirnGram Ghost: никогда не отправлять статус набора текста
++	return;
+ }
+
+ void Session::markHistoryRead(PeerData *peer) {
++	// MirnGram Ghost: не слать readHistory автоматически
++	if (MirnSettings::Instance().ghostReadEnabled()) {
++		return;
++	}
+ }
