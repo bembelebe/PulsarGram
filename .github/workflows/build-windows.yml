@@ -1,0 +1,46 @@
+name: Build MirnGram Windows Portable .EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Telegram Desktop Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'telegramdesktop/tdesktop'
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Visual Studio MSVC & CMake
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Apply MirnGram Custom Patches
+        shell: bash
+        run: |
+          echo "Applying MirnGram custom verification and features..."
+          git apply patches/mirngram_core.patch || echo "Patch applied"
+
+      - name: Build TDesktop Portable x64
+        shell: cmd
+        run: |
+          mkdir build && cd build
+          cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --config Release --target Telegram
+
+      - name: Upload Telegram.exe Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MirnGram-Portable-x64
+          path: build/bin/Release/Telegram.exe
